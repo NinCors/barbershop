@@ -14,56 +14,63 @@ pthread_mutex_t count_mutex;
 pthread_cond_t count_threshold_cv;
 
 
+void printData(){
+	printf("Total wait number is %d \n",waitCount);
+	printf("Total record is %d \n",record);
+	printf("Total hosting is %d \n", hosting);
+}
+
+
 void *customer(void *t){
-	int customerId = (int)t;
-	int waiting = 0;	
-	int finish = 0;
-	printf("Wow, customer %d arrived!\n",customerId);	
 	
-	while(finish == 0){	
-		pthread_mutex_lock(&count_mutex);
-		if(waiting == 0){
-			record++;
-			waitCount++;
-		}
-		if( hosting < HOSTNUM && waitCount > 0 && waitCount <= WAITING_LIMIT && waiting ==0){
-			pthread_cond_signal(&count_threshold_cv);
-			printf("Good! GOGOGO,barber is waiting for you! customer %d \n", customerId);
-			waitCount--;
-			waiting = 1;
-			finish = 1;
-        	}	
-		else if (waitCount < WAITING_LIMIT && waiting == 0 ){
-			printf("Sorry, barber is busy, plz wait, customer %d \n",customerId);
-                	waiting = 1;
-		}	
-		else if (waitCount >= WAITING_LIMIT && waiting == 0 ){ 
-			printf("Sorry, waiting room is full, see u next time! customer %d \n", customerId);
-			finish = 1;
-			waitCount--;
-		}
+	int id = (int)t;
+	int finish = -1;
+	int wait = 0;
 	
-		pthread_mutex_unlock(&count_mutex);
-		sleep(1);
-		}	
-	// finish this thread
-	printf("Customer %d finished!\n", customerId);
+	while(finish == -1){
+	pthread_mutex_lock(&count_mutex);
+	if(waitCount < WAITING_LIMIT && hosting == 1 && wait == 0){
+		waitCount++;
+		record++;
+		printf("Dear Customer %d please sit in waiting room \n", id);
+		wait = 1;
+	}
+	else if( hosting == 0 ){
+		printf("GoGoGo, customer %d, barber is waiting for you \n", id);
+		record++;
+		pthread_cond_wait(&count_threshold_cv,&count_mutex);
+		finish = 1;
+	}
+	else if(waitCount > WAITING_LIMIT && wait == 0){
+		printf("Waiting room is full, Customer %d left !\n",id);
+		finish = 1;
+		record++;
+	}
+	pthread_mutex_unlock(&count_mutex);
+	sleep(1);
+
+	}
+
+	printf("Customer %d finished ! \n",id);
 	pthread_exit(NULL);
 }
 
 void *barber(void *t){
-	pthread_mutex_lock(&count_mutex);
-	printf("This is barber~\n");
-	while(record < HOSTNUM){
-		pthread_cond_wait(&count_threshold_cv, &count_mutex);
-		hosting++;
-		printf("Hair cut.........\n");
-		sleep(4);// the time to finish the hair cut
-		hosting--;
+	printf("This is barber! \n");
+	while(record <= MAX_HOST){
+		pthread_mutex_lock(&count_mutex);
+		if(waitCount > 0 && hosting == 1){
+			printf("Doing hair cut.........\n");
+			sleep(3);
+			waitCount--;
+			pthread_cond_signal(&count_threshold_cv);
+		}
+		pthread_mutex_unlock(&count_mutex);
 	}
-	pthread_mutex_unlock(&count_mutex);
 	pthread_exit(NULL);
 }
+
+
 
 int main(){
 	int i;
@@ -82,11 +89,14 @@ int main(){
 	pthread_create(&threads[0], &attr, barber, (void *) i);
 	sleep(1);
 	for (i = 1; i < MAX_HOST; i++){
-		randNum = rand()%2; // 0 or 1
-		if(randNum == 1){	
-			pthread_create(&threads[i], &attr, customer, (void *)i);
+		randNum = 0;
+		while(randNum == 0){
+			randNum = rand()%2; // 0 or 1
+			if(randNum == 1){	
+				pthread_create(&threads[i], &attr, customer, (void *)i);
+			}	
+			sleep(1);
 		}
-		sleep(2);
 	}
 	
 	/* Wait for all threads to complete */
@@ -100,7 +110,5 @@ int main(){
    	pthread_cond_destroy(&count_threshold_cv);
    	pthread_exit(NULL);
 }
-
-
 
 
